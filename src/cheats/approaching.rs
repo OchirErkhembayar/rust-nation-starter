@@ -29,13 +29,13 @@ pub async fn auto(
     // todo: set a sane default for determining whether we are
     // "on" the target
     const SUCCESS_THRESHOLD: u32 = 100;
-    const APPROACHING_DURATION: Duration = Duration::from_secs(2);
+    const APPROACHING_DURATION: Duration = Duration::from_millis(1500);
 
     'approaching: loop {
         let (precar, pretarget) = super::internal::infer(colors, drone).await?;
         let pre = distance(&precar, &pretarget);
 
-        wheels.set(Angle::straight()).await?;
+        // wheels.set(Angle::straight()).await?;
         motor
             .move_for(Velocity::forward(), APPROACHING_DURATION)
             .await?;

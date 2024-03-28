@@ -1,6 +1,7 @@
 mod cheats;
 
 use hs_hackathon::prelude::*;
+use std::time::Duration;
 
 use cheats::angles::Vector;
 use cheats::approaching::Hint;
@@ -55,9 +56,39 @@ impl State {
         motor: &mut MotorSocket,
         wheels: &mut WheelOrientation,
     ) -> eyre::Result<()> {
+        let team_colors = TeamColors {
+            car: CAR,
+            target: TARGET,
+        };
         match self {
             State::Turning => loop {
-                unimplemented!()
+                let (initial_car, _initial_target) =
+                    cheats::internal::infer(&team_colors, drone).await?;
+
+                wheels.set(Angle::straight()).await?;
+                motor
+                    .move_for(Velocity::forward(), Duration::from_millis(1500))
+                    .await?;
+
+                let (new_car, target) = cheats::internal::infer(&team_colors, drone).await?;
+
+                let initial_car_center = Position::from(initial_car);
+                let new_car_center = Position::from(new_car);
+
+                let target_center = Position::from(target);
+
+                let car_heading = Vector::from((initial_car_center, new_car_center));
+                let desired_angle = Vector::from((new_car_center, target_center));
+
+                let difference_angle = car_heading.angle(desired_angle);
+
+                if difference_angle.abs() >= 10.0 {
+                    wheels
+                        .set(Angle::try_from(difference_angle as f32)?)
+                        .await?;
+                }
+
+                *self = Self::Approaching;
             },
             State::Approaching => {
                 let hint = cheats::approaching::auto(
