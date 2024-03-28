@@ -162,7 +162,9 @@ async fn main() -> eyre::Result<()> {
     let mut machine = State::Turning;
 
     loop {
-        machine.execute(&mut drone, &mut motor, &mut wheels).await?;
+        if let Err(error) = machine.execute(&mut drone, &mut motor, &mut wheels).await {
+            tracing::error!(error = display(error), "Something's wrong!");
+        }
         tracing::debug!("{:?}", machine);
     }
 }
