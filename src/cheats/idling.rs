@@ -1,11 +1,14 @@
 use std::time::Duration;
 
+use crate::boxes_to_vector;
 use hs_hackathon::car::{MotorSocket, WheelOrientation};
 use hs_hackathon::drone::Camera;
 use hs_hackathon::prelude::*;
 
-use super::TeamColors;
+use crate::cheats::angles::Vector;
 use crate::cheats::positioning::distance;
+
+use super::TeamColors;
 
 /// This idles your car on the target
 ///
@@ -17,7 +20,7 @@ pub async fn auto(
     drone: &mut Camera,
     _motor: &mut MotorSocket,
     _wheels: &mut WheelOrientation,
-) -> eyre::Result<()> {
+) -> eyre::Result<Vector> {
     // todo: set a sane default for determining whether we are
     // "on" the target
     const SUCCESS_THRESHOLD: u32 = 50;
@@ -33,14 +36,16 @@ pub async fn auto(
         let (currentcar, currenttarget) = super::internal::infer(colors, drone).await?;
         let current = distance(&currentcar, &currenttarget);
 
+        let car_angle = boxes_to_vector(precar, currentcar);
+
         // 1. if we were closer to the target before, recalibrate
         if pre <= current {
-            return Ok(());
+            return Ok(car_angle);
         }
 
         // 2. if the current distance is not on the target, recalibrate
         if current > SUCCESS_THRESHOLD {
-            return Ok(());
+            return Ok(car_angle);
         }
 
         // 3. stay on the target

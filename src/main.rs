@@ -1,6 +1,7 @@
 mod cheats;
 
 use hs_hackathon::prelude::*;
+use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 
 use cheats::angles::Vector;
@@ -33,13 +34,16 @@ impl MapState {
     }
 }
 
-#[derive(Debug)]
 #[allow(unused)]
 enum State {
+    Initial,
+
     /// Turn the cars direction by doing consecutive front and back movements
     /// until the angle between the cars orientation and the target converges to be under
     /// a specified threshold
-    Turning,
+    Turning {
+        car_heading: Vector,
+    },
     /// Approach the car by doing incremental actions of approaching and measuring interleaved.
     /// So we approach the target a bit, measure if we decreased the distance, if yes repeat, if no
     /// then calibrate. We do this until we hit the target.
@@ -60,8 +64,8 @@ impl State {
             car: CAR,
             target: TARGET,
         };
-        match self {
-            State::Turning => loop {
+        *self = match std::mem::replace(self, State::Initial) {
+            State::Initial => {
                 let (initial_car, _initial_target) =
                     cheats::internal::infer(&team_colors, drone).await?;
 
@@ -70,15 +74,17 @@ impl State {
                     .move_for(Velocity::forward(), Duration::from_millis(2000))
                     .await?;
 
-                let (new_car, target) = cheats::internal::infer(&team_colors, drone).await?;
+                let (new_car, _new_target) = cheats::internal::infer(&team_colors, drone).await?;
 
-                let initial_car_center = Position::from(initial_car);
-                let new_car_center = Position::from(new_car);
+                Self::Turning {
+                    car_heading: boxes_to_vector(initial_car, new_car),
+                }
+            }
+            State::Turning { car_heading } => {
+                let (car_position, target_position) =
+                    cheats::internal::infer(&team_colors, drone).await?;
 
-                let target_center = Position::from(target);
-
-                let car_heading = Vector::from((initial_car_center, new_car_center));
-                let desired_angle = Vector::from((new_car_center, target_center));
+                let desired_angle = boxes_to_vector(car_position, target_position);
 
                 let difference_angle = car_heading.angle(desired_angle);
 
@@ -89,43 +95,42 @@ impl State {
                 if difference_angle.abs() <= STRAIGHT_THRESHOLD {
                     // We're straight enough. Just call it a success. We'll need to tune the magic
                     // threshold though.
-                    *self = Self::Approaching;
-                    continue;
-                }
-
-                let new_wheel_angle = if difference_angle.abs() > MAX_TURN_ANGLE {
-                    if difference_angle < 0.0 {
-                        Angle::left()
-                    } else {
-                        Angle::right()
-                    }
+                    Self::Approaching
                 } else {
-                    let raw_angle_value = if difference_angle < 0.0 {
-                        linear_map(difference_angle, -MAX_TURN_ANGLE, 0.0, -1.0, 0.0)
+                    let new_wheel_angle = if difference_angle.abs() > MAX_TURN_ANGLE {
+                        if difference_angle < 0.0 {
+                            Angle::left()
+                        } else {
+                            Angle::right()
+                        }
                     } else {
-                        linear_map(difference_angle, 0.0, MAX_TURN_ANGLE, 0.0, 1.0)
+                        let raw_angle_value = if difference_angle < 0.0 {
+                            linear_map(difference_angle, -MAX_TURN_ANGLE, 0.0, -1.0, 0.0)
+                        } else {
+                            linear_map(difference_angle, 0.0, MAX_TURN_ANGLE, 0.0, 1.0)
+                        };
+                        Angle::try_from(raw_angle_value as f32)?
                     };
-                    Angle::try_from(raw_angle_value as f32)?
-                };
 
-                wheels.set(new_wheel_angle).await?;
+                    wheels.set(new_wheel_angle).await?;
 
-                *self = Self::Approaching;
-            },
+                    Self::Approaching
+                }
+            }
             State::Approaching => {
-                let hint = cheats::approaching::auto(&team_colors, drone, motor, wheels).await?;
+                let hint = cheats::approaching::auto(&team_colors, drone, motor).await?;
 
-                *self = match hint {
+                match hint {
                     Hint::TargetWasHit => Self::Idle,
-                    Hint::OrientationIsOff => Self::Turning,
-                };
+                    Hint::OrientationIsOff { car_heading } => Self::Turning { car_heading },
+                }
             }
             State::Idle => {
-                cheats::idling::auto(&team_colors, drone, motor, wheels).await?;
+                let car_heading = cheats::idling::auto(&team_colors, drone, motor, wheels).await?;
 
-                *self = Self::Turning;
+                Self::Turning { car_heading }
             }
-        }
+        };
 
         Ok(())
     }
@@ -135,18 +140,33 @@ fn linear_map(number: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64)
     (number - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 }
 
+fn boxes_to_vector(box_1: BoundingBox, box_2: BoundingBox) -> Vector {
+    Vector::from((Position::from(box_1), Position::from(box_2)))
+}
+
 #[hs_hackathon::main]
 async fn main() -> eyre::Result<()> {
     let mut wheels = WheelOrientation::new().await?;
     let mut motor = MotorSocket::open().await?;
     let mut drone = Camera::connect().await?;
 
-    let mut machine = State::Turning;
+    let mut machine = State::Initial;
 
     loop {
         if let Err(error) = machine.execute(&mut drone, &mut motor, &mut wheels).await {
             tracing::error!(error = display(error), "Something's wrong!");
         }
         tracing::debug!("{:?}", machine);
+    }
+}
+
+impl Debug for State {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Initial => write!(f, "Initial"),
+            Self::Turning { .. } => write!(f, "Turning"),
+            Self::Approaching => write!(f, "Approaching"),
+            Self::Idle => write!(f, "Idle"),
+        }
     }
 }

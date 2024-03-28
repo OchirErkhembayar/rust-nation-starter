@@ -1,9 +1,11 @@
 use std::time::Duration;
 
-use hs_hackathon::car::{Angle, MotorSocket, Velocity, WheelOrientation};
+use hs_hackathon::car::{MotorSocket, Velocity};
 use hs_hackathon::drone::Camera;
 use hs_hackathon::prelude::eyre;
 
+use crate::boxes_to_vector;
+use crate::cheats::angles::Vector;
 use crate::cheats::positioning::distance;
 
 use super::TeamColors;
@@ -11,7 +13,7 @@ use super::TeamColors;
 /// A hint given to you by the approach cheat
 pub enum Hint {
     /// Indicates that we are not on track anymore and we should repair the orientation
-    OrientationIsOff,
+    OrientationIsOff { car_heading: Vector },
     /// Indicates that the target was hit and we are in reasonable proximity
     TargetWasHit,
 }
@@ -24,7 +26,6 @@ pub async fn auto(
     colors: &TeamColors,
     drone: &mut Camera,
     motor: &mut MotorSocket,
-    wheels: &mut WheelOrientation,
 ) -> eyre::Result<Hint> {
     // todo: set a sane default for determining whether we are
     // "on" the target
@@ -50,7 +51,9 @@ pub async fn auto(
 
         // 2. if we were closer before approaching or didnt move, calibrate
         if pre <= current {
-            return Ok(Hint::OrientationIsOff);
+            return Ok(Hint::OrientationIsOff {
+                car_heading: boxes_to_vector(precar, currentcar),
+            });
         }
 
         // 3. continue with approaching
