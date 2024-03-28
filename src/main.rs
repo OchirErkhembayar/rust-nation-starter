@@ -113,16 +113,7 @@ impl State {
                 *self = Self::Approaching;
             },
             State::Approaching => {
-                let hint = cheats::approaching::auto(
-                    &TeamColors {
-                        car: CAR,
-                        target: TARGET,
-                    },
-                    drone,
-                    motor,
-                    wheels,
-                )
-                .await?;
+                let hint = cheats::approaching::auto(&team_colors, drone, motor, wheels).await?;
 
                 *self = match hint {
                     Hint::TargetWasHit => Self::Idle,
@@ -130,16 +121,7 @@ impl State {
                 };
             }
             State::Idle => {
-                cheats::idling::auto(
-                    &TeamColors {
-                        car: CAR,
-                        target: TARGET,
-                    },
-                    drone,
-                    motor,
-                    wheels,
-                )
-                .await?;
+                cheats::idling::auto(&team_colors, drone, motor, wheels).await?;
 
                 *self = Self::Turning;
             }
