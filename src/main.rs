@@ -82,11 +82,33 @@ impl State {
 
                 let difference_angle = car_heading.angle(desired_angle);
 
-                if difference_angle.abs() >= 10.0 {
-                    wheels
-                        .set(Angle::try_from(difference_angle as f32)?)
-                        .await?;
+                // The angle will be between -180 and 180
+                const STRAIGHT_THRESHOLD: f64 = 10.0;
+                const MAX_TURN_ANGLE: f64 = 30.0;
+
+                if difference_angle.abs() <= STRAIGHT_THRESHOLD {
+                    // We're straight enough. Just call it a success. We'll need to tune the magic
+                    // threshold though.
+                    *self = Self::Approaching;
+                    continue;
                 }
+
+                let new_wheel_angle = if difference_angle.abs() > MAX_TURN_ANGLE {
+                    if difference_angle < 0.0 {
+                        Angle::left()
+                    } else {
+                        Angle::right()
+                    }
+                } else {
+                    let raw_angle_value = if difference_angle < 0.0 {
+                        linear_map(difference_angle, -180.0, 0.0, -1.0, 0.0)
+                    } else {
+                        linear_map(difference_angle, 0.0, 180.0, 0.0, 1.0)
+                    };
+                    Angle::try_from(raw_angle_value as f32)?
+                };
+
+                wheels.set(new_wheel_angle).await?;
 
                 *self = Self::Approaching;
             },
@@ -125,6 +147,10 @@ impl State {
 
         Ok(())
     }
+}
+
+fn linear_map(number: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+    (number - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 }
 
 #[hs_hackathon::main]
