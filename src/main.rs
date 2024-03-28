@@ -101,9 +101,9 @@ impl State {
                     }
                 } else {
                     let raw_angle_value = if difference_angle < 0.0 {
-                        linear_map(difference_angle, -180.0, 0.0, -1.0, 0.0)
+                        linear_map(difference_angle, -MAX_TURN_ANGLE, 0.0, -1.0, 0.0)
                     } else {
-                        linear_map(difference_angle, 0.0, 180.0, 0.0, 1.0)
+                        linear_map(difference_angle, 0.0, MAX_TURN_ANGLE, 0.0, 1.0)
                     };
                     Angle::try_from(raw_angle_value as f32)?
                 };
