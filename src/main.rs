@@ -67,7 +67,7 @@ impl State {
 
                 wheels.set(Angle::straight()).await?;
                 motor
-                    .move_for(Velocity::forward(), Duration::from_millis(1500))
+                    .move_for(Velocity::forward(), Duration::from_millis(2000))
                     .await?;
 
                 let (new_car, target) = cheats::internal::infer(&team_colors, drone).await?;
